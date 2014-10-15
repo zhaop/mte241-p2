@@ -1,0 +1,5 @@
+-c --cpu Cortex-M3 -D__MICROLIB -g -O3 -Otime --apcs=interwork --forceinline 
+-I C:\Software\Keil\ARM\RV31\INC 
+-I C:\Software\Keil\ARM\CMSIS\Include 
+-I C:\Software\Keil\ARM\Inc\NXP\LPC17xx 
+-o "half_fit_test.o" --omf_browse "half_fit_test.crf" --depend "half_fit_test.d" "half_fit_test.c"

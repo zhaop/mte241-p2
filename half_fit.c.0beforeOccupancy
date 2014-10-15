@@ -1,0 +1,365 @@
+#include <LPC17xx.h>
+#include <stdio.h>
+#include <stdbool.h>
+#include "type.h"
+#include "GLCD.h"
+
+#define BLOCK_BYTES 32		// Block size in U8 (bytes)
+#define BLOCK_SIZE 8			// Block size in U32 (type of memory array)
+
+#define NEXT 0x003FF000 	// 0b00000000001111111111000000000000
+#define PREV 0xFFC00000 	// 0b11111111110000000000000000000000
+#define LAST10 0x000003FF // 0b00000000000000000000001111111111
+#define V_NULL 0x8000			// Null value for virtual address (16-bit)
+#define BUCKET_NULL	0xff	// Null value for bucket number (8-bit)
+
+// List of virtual pointers to items in buckets
+U16 ramses[11];
+
+// Memory pool we will be using
+U32 memory[32768/4] __attribute__ ((section(".ARM.__at_0x10000000"), zero_init));
+
+
+// Holds information on a block
+typedef struct block {
+	U16 v_addr,			// Virtual address of this block
+			prev_mem,		// V-addr of previous block in memory
+			next_mem,		// V-addr of next block in memory
+			size,				// Size, in units of blocks ( = BLOCK_BYTES bytes = 32 bytes)
+			prev_buck,	// V-addr of previous block in bucket
+			next_buck;	// V-addr of next block in bucket
+} block_t;
+
+
+__inline static U8 bucketIndex(U16 size) {
+	/*U8 i;
+	for (i = 0; i <= 10; ++i)
+		if ( size < (2 << i) )
+			return i;*/
+	/*
+	if (size < 2)			return 0 ;
+	if (size < 4)			return 1 ;
+	if (size < 8)			return 2 ;
+	if (size < 16)		return 3 ;
+	if (size < 32)		return 4 ;
+	if (size < 64)		return 5 ;
+	if (size < 128)		return 6 ;
+	if (size < 256)		return 7 ;
+	if (size < 512)		return 8 ;
+	if (size < 1024)	return 9 ;
+	if (size < 2048)	return 10;*/
+	//return BUCKET_NULL;
+	return 31 - __clz(size);
+}
+
+__inline static void getBlockHeader(block_t* b, U16 v_addr) {
+	U32 h;
+	
+	b->v_addr = v_addr;
+	
+	h = memory[v_addr*BLOCK_SIZE];
+	b->prev_mem  =   h >> 22;
+	b->next_mem  =  (h >> 12) & LAST10;
+	b->size    	= ((h >>  2) & LAST10) + 1;
+	
+	h = memory[v_addr*BLOCK_SIZE + 1];
+	b->prev_buck =   h >> 22;
+	b->next_buck =  (h >> 12) & LAST10;
+}
+
+__inline static U16 getNextBuck(U16 v_addr) {
+	return (memory[v_addr*BLOCK_SIZE + 1] >> 12) & LAST10;
+}
+
+__inline static U16 isAllocated(U16 v_addr) {
+	return ((memory[v_addr*BLOCK_SIZE] >> 1) & 0x00000001);
+}
+
+__inline static void setPrevMem(U16 v_addr, U16 value) {
+	memory[v_addr*BLOCK_SIZE] = memory[v_addr*BLOCK_SIZE]
+		& ~PREV
+		| value << 22;
+}
+
+__inline static void setPrevBuck(U16 v_addr, U16 value) {
+	memory[v_addr*BLOCK_SIZE + 1] = memory[v_addr*BLOCK_SIZE + 1]
+		& ~PREV
+		| value << 22;
+}
+
+__inline static void setNextBuck(U16 v_addr, U16 value) {
+	memory[v_addr*BLOCK_SIZE + 1] = memory[v_addr*BLOCK_SIZE + 1]
+		& ~NEXT
+		| value << 12;
+}
+
+
+void half_init( void ){
+	
+	U8 i = 0;
+	
+	// Initialize first block
+	memory[0] = LAST10 << 2; // Set size to 1024
+	for(i = 1; i <= 6; i++){
+		memory[i] = 0;
+	}
+	
+	// Set all buckets to V_NULL except for the last one
+	// that points on beginning of memory array
+	for(i = 0; i < 10; i++){
+		ramses[i] = V_NULL;
+	}
+	ramses[10] = 0x0000;
+}
+
+
+void* half_alloc( U32 bytes ){
+	
+	block_t block;
+	block_t newblock;
+	U8 bucket;
+	U8 newbucket;
+	U8 i;
+	U16 v_addr;
+	
+	// Request 4 more bytes for the header part
+	bytes += 4;
+	
+	// Find a block in the smallest possible non-empty bucket
+	i = bucketIndex( (bytes - 1) >> 5 ) + 1;	// Calculate smallest bucket that could fit
+	while (i <= 10 && ramses[i] == V_NULL) {
+		i++;
+	}
+	
+	// No more available blocks satisfy this request
+	if (i == 11) {
+		return NULL;
+	}
+	
+	bucket = i;
+	v_addr = ramses[i];
+	
+	// Get block header info
+	getBlockHeader(&block, v_addr);
+	
+	// Remove block from bucket linked list
+	if (block.v_addr == block.next_buck) {
+		// Current block is alone in bucket
+		
+		ramses[bucket] = V_NULL;
+		
+	} else {
+		// Current block is not alone in bucket
+		
+		// block.next.prev := block.prev		(with _buck)
+		setPrevBuck(block.next_buck, block.prev_buck);
+		
+		// block.prev.next := block.next		(with _buck)
+		setNextBuck(block.prev_buck, block.next_buck);
+		
+		// Change linked list buckethead (http://www.youtube.com/watch?v=lkeXE6FOf6s)
+		ramses[bucket] = block.next_buck;
+	}
+	
+	// Mark block as allocated
+	memory[block.v_addr*BLOCK_SIZE] |= 0x0002;
+	
+	
+	if (block.size*BLOCK_BYTES - bytes >= 32) {
+		// Block needs to be split into 2 blocks
+		// (block will be returned, newblock stays in free memory)
+	
+		// Set new block size
+		newblock.size = block.size - ((bytes-1)/BLOCK_BYTES + 1);
+		
+		// Reduce block size
+		block.size -= newblock.size;
+		
+		// Locate new block
+		newblock.v_addr = block.v_addr + block.size;
+		
+		
+		// Put new block into memory linked list
+		newblock.prev_mem = block.v_addr		;
+		newblock.next_mem = block.next_mem 	;
+		
+		// block.next.prev := newblock.v_addr			(with _mem)
+		setPrevMem(block.next_mem, newblock.v_addr);
+		
+		block.next_mem 		= newblock.v_addr	;
+		
+		
+		// Find bucket number for new block
+		newbucket = bucketIndex(newblock.size);
+		
+		
+		// If applicable, append new block to existing head of bucket
+		if (ramses[newbucket] != V_NULL) {
+			// newblock.next := ramses[newbucket].next					(with _buck)
+			newblock.next_buck = getNextBuck(ramses[newbucket]);
+			
+			// newblock.prev := ramses[newbucket].v_addr				(with _buck)
+			newblock.prev_buck = ramses[newbucket];
+			
+			// ramses[newbucket].next.prev := newblock.v_addr		(with _buck)
+			setPrevBuck(getNextBuck(ramses[newbucket]), newblock.v_addr);
+			
+			// ramses[newbucket].next := newblock.v_addr				(with _buck)
+			setNextBuck(ramses[newbucket], newblock.v_addr);
+			
+		} else {
+			// Link new block to itself
+			newblock.next_buck = newblock.prev_buck = newblock.v_addr;
+			
+			// Set new block as head of its bucket
+			ramses[newbucket] = newblock.v_addr;
+		}
+		
+		// Save new next_mem & size to current block
+		// (Do not save block.prev_mem! Could overwrite critical data.)
+		memory[block.v_addr*BLOCK_SIZE] = memory[block.v_addr*BLOCK_SIZE]
+			& ~(LAST10 << 12 | LAST10 << 2)
+			| (block.next_mem << 12) | ((block.size-1) << 2);
+		
+		// Save new block & set as unallocated
+		memory[newblock.v_addr*BLOCK_SIZE] = (newblock.prev_mem << 22) | (newblock.next_mem << 12) | ((newblock.size-1) << 2);
+		memory[newblock.v_addr*BLOCK_SIZE+1] = (newblock.prev_buck << 22) | (newblock.next_buck << 12);
+	}
+	
+	// Return pointer to current block
+	return (void*)(memory + block.v_addr*BLOCK_SIZE + 1);
+		
+}
+
+void half_free( void * pointer_void ) {
+	
+	U8* pointer = (U8*) pointer_void;
+	U8 bucket = BUCKET_NULL;
+	U8 bucket2 = BUCKET_NULL;
+	U16 v_addr;
+	
+	// The working block (which will contain all merged blocks in the end)
+	block_t block;
+	
+	// Neighboring block
+	block_t block2;
+	
+	// Go left towards beginning of header block
+	pointer -= 4;
+	
+	// Find if block is in our memory pool
+	if ((int)pointer < (int)memory || (int)pointer - (int)memory >= 32768) {
+		
+		// We're not doing this
+		return;
+	}
+	
+	v_addr = ((int)pointer - (int)memory)/BLOCK_BYTES;
+	
+	// Get block header info
+	getBlockHeader(&block, v_addr);
+	
+	// If there is a free block to the left:
+	if ( (block.v_addr != 0) && !isAllocated(block.prev_mem) ) {
+		// Get left block header info
+		getBlockHeader(&block2, block.prev_mem);
+		
+		// Add left block size to working block size
+		block.size += block2.size;
+		
+		// Working block's address takes left block's address
+		block.v_addr = block.prev_mem;
+		
+		// Working block's prev_mem takes left block's prev_mem
+		block.prev_mem = block2.prev_mem;
+		
+		// block.next.prev := block.v_addr	(with _mem)
+		setPrevMem(block.next_mem, block.v_addr);
+		
+		
+		// Remove left block from its bucket
+		bucket2 = bucketIndex(block2.size);
+		if ( block2.v_addr == ramses[bucket2] ){
+			ramses[bucket2] = V_NULL;
+			
+		} else {
+			setPrevBuck(block2.next_buck, block2.prev_buck);	// block2.next.prev := block2.prev	(with _buck)
+			setNextBuck(block2.prev_buck, block2.next_buck);	// block2.prev.next := block2.next	(with _buck)
+			
+			// if bucket.head == block2
+			if( ramses[bucket2] == block2.v_addr){
+				// bucket.head := block2.next				(with _buck)
+				ramses[bucket2] = block2.next_buck;
+			}
+		}
+	}
+	
+	// If there is a free block to the right:
+	if ( (block.next_mem != 0) && !isAllocated(block.next_mem) ) {
+		
+		// Get right block info
+		getBlockHeader(&block2, block.next_mem);
+		
+		// Add right block size to working block size
+		block.size += block2.size;
+		
+		// Set working block's next_mem to right block's next_mem
+		block.next_mem = block2.next_mem;
+		
+		// block.prev.next := block.v_addr			(with _mem)
+		//setNextMem(block.prev_mem, block.v_addr);	// WRONG
+		
+		// block.next.prev := block.v_addr			(with _mem)
+		setPrevMem(block.next_mem, block.v_addr);
+		
+		// Remove right block from its bucket
+		bucket2 = bucketIndex(block2.size);
+		if ( block2.v_addr == ramses[bucket2] ){
+			ramses[bucket2] = V_NULL;
+			
+		} else {
+			// block2.next.prev := block2.prev		(with _buck)
+			setPrevBuck(block2.next_buck, block2.prev_buck);
+			
+			// block2.prev.next := block2.next		(with _buck)
+			setNextBuck(block2.prev_buck, block2.next_buck);
+			
+			// if bucket.head == block2
+			if( ramses[bucket2] == block2.v_addr){
+				// bucket.head := block2.next				(with _buck)
+				ramses[bucket2] = block2.next_buck;
+			}
+		}
+	}
+	
+	// Find bucket for working block
+	bucket = bucketIndex(block.size);
+	
+	// If bucket non-empty, append working block to existing head of bucket
+	// Otherwise, link working block to itself & set as head of bucket
+	if (ramses[bucket] != V_NULL) {
+		// block.next := ramses[bucket].next					(with _buck)
+		block.next_buck = getNextBuck(ramses[bucket]);
+		
+		// block.prev := ramses[bucket].v_addr				(with _buck)
+		block.prev_buck = ramses[bucket];
+		
+		// ramses[bucket].next.prev := block.v_addr		(with _buck)
+		setPrevBuck(getNextBuck(ramses[bucket]), block.v_addr);
+		
+		// ramses[bucket].next := block.v_addr				(with _buck)
+		setNextBuck(ramses[bucket], block.v_addr);
+	} else {
+		// Link working block to itself
+		block.next_buck = block.prev_buck = block.v_addr;
+		
+		// Set working block as head of its bucket
+		ramses[bucket] = block.v_addr;
+	}
+	
+	// Save working block
+	memory[block.v_addr*BLOCK_SIZE]			= (block.prev_mem  << 22) | (block.next_mem  << 12) | ((block.size-1) << 2);
+	memory[block.v_addr*BLOCK_SIZE + 1]	= (block.prev_buck << 22) | (block.next_buck << 12);
+	
+	return;
+}

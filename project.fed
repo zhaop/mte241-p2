@@ -1,0 +1,81 @@
+;#<FEEDBACK># ARM Linker, 5.02 [Build 28]: Last Updated: Wed Oct 15 13:09:52 2014
+;VERSION 0.2
+;FILE glcd_scroll.o
+__asm___13_GLCD_Scroll_c_87795306____REV16 <= USED 0
+__asm___13_GLCD_Scroll_c_87795306____REVSH <= USED 0
+append_char <= USED 0
+initJoyStick <= USED 0
+init_scroll <= USED 0
+joyStickBusyWaitingMonitor <= USED 0
+moveDown <= USED 0
+moveFirst <= USED 0
+moveLast <= USED 0
+moveUp <= USED 0
+print_string <= USED 0
+print_text <= USED 0
+refresh_lcd <= USED 0
+;FILE glcd_spi_lpc1700.o
+GLCD_Bargraph <= USED 0
+GLCD_Bitmap <= USED 0
+GLCD_Clear <= USED 0
+GLCD_ClearLn <= USED 0
+GLCD_DisplayChar <= USED 0
+GLCD_DisplayString <= USED 0
+GLCD_DrawChar <= USED 0
+GLCD_Init <= USED 0
+GLCD_PutPixel <= USED 0
+GLCD_ScrollVertical <= USED 0
+GLCD_SetBackColor <= USED 0
+GLCD_SetTextColor <= USED 0
+GLCD_SetWindow <= USED 0
+GLCD_WindowMax <= USED 0
+GLCD_WrCmd <= USED 0
+GLCD_WrReg <= USED 0
+__asm___18_GLCD_SPI_LPC1700_c_07b274fb____REV16 <= USED 0
+__asm___18_GLCD_SPI_LPC1700_c_07b274fb____REVSH <= USED 0
+;FILE half_fit.o
+__asm___10_half_fit_c_d23b3e93____REV16 <= USED 0
+__asm___10_half_fit_c_d23b3e93____REVSH <= USED 0
+;FILE half_fit_test.o
+__asm___15_half_fit_test_c_b672aa62____REV16 <= USED 0
+__asm___15_half_fit_test_c_b672aa62____REVSH <= USED 0
+alloc_blk_in_arr <= USED 0
+cmpr_blks <= USED 0
+find_max_block <= USED 0
+get_random_block_size <= USED 0
+is_violated <= USED 0
+log_2 <= USED 0
+test_alc_free_max <= USED 0
+test_max_alc <= USED 0
+test_max_alc_1_byte <= USED 0
+test_max_alc_rand_byte <= USED 0
+;FILE main.o
+__asm___6_main_c_displayf____REV16 <= USED 0
+__asm___6_main_c_displayf____REVSH <= USED 0
+displayf <= USED 0
+main2 <= USED 0
+;FILE retarget.o
+_sys_exit <= USED 0
+_ttywrch <= USED 0
+ferror <= USED 0
+fgetc <= USED 0
+getkey <= USED 0
+sendchar <= USED 0
+;FILE startup_lpc17xx.o
+;FILE system_lpc17xx.o
+__asm___16_system_LPC17xx_c_5d646a67____REV16 <= USED 0
+__asm___16_system_LPC17xx_c_5d646a67____REVSH <= USED 0
+;FILE uart.o
+Free <= USED 0
+FreeRcv <= USED 0
+FreeSnd <= USED 0
+Lock <= USED 0
+LockRcv <= USED 0
+LockSnd <= USED 0
+UARTInit <= USED 0
+UARTReceiveChar <= USED 0
+UARTRecieve <= USED 0
+UARTSend <= USED 0
+__asm___6_uart_c_9767d98f____REV16 <= USED 0
+__asm___6_uart_c_9767d98f____REVSH <= USED 0
+getFrequency <= USED 0

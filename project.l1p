@@ -1,0 +1,7 @@
+--cpu Cortex-M3 "startup_lpc17xx.o" "main.o" "glcd_scroll.o" "glcd_spi_lpc1700.o" "half_fit.o" "half_fit_test.o" "retarget.o" "uart.o" "system_lpc17xx.o" 
+--library_type=microlib 
+--feedback "project.fed" --feedback_image=none 
+--strict --scatter "project.sct" 
+--summary_stderr --info summarysizes --map --xref --callgraph --symbols 
+--info sizes --info totals --info unused --info veneers 
+ --list ".\project.map" -o project.axf

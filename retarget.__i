@@ -1,0 +1,5 @@
+-c --cpu Cortex-M3 -D__MICROLIB -g -O3 -Otime --apcs=interwork --forceinline 
+-I C:\Software\Keil\ARM\RV31\INC 
+-I C:\Software\Keil\ARM\CMSIS\Include 
+-I C:\Software\Keil\ARM\Inc\NXP\LPC17xx 
+-o "retarget.o" --omf_browse "retarget.crf" --depend "retarget.d" "Retarget.c"
